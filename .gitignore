@@ -2,6 +2,10 @@
 *.apk
 *.ap_
 
+gradle/
+gradlew
+gradlew.bat
+
 # Files for the Dalvik VM
 *.dex
 
