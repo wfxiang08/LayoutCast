@@ -1,5 +1,5 @@
+# -*- coding:utf-8 -*-
 #!/usr/bin/python
-
 __author__ = 'mmin18'
 __version__ = '1.50922'
 __plugin__ = '1'
