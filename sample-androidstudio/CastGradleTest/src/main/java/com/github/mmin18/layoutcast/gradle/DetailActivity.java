@@ -14,6 +14,8 @@ public class DetailActivity extends Activity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		Fresco.initialize(this);
+		// 添加注释
+		// 独山大道
 		setContentView(R.layout.detail_view);
 
 		((SimpleDraweeView) findViewById(R.id.image)).setImageURI(getIntent().getData());

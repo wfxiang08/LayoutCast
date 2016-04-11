@@ -19,7 +19,7 @@
 		android:layout_below="@id/text"
 		android:layout_marginBottom="10dp"
 		android:padding="6dp"
-		android:text="大家好, 感觉这个还是不错的, 现在测试看看怎么样，开发模式很重要"/>
+		android:text="大家好, 感觉这个还是不错的, 现在测试看看怎么样"/>
 
 	<ListView
 		android:id="@android:id/list"

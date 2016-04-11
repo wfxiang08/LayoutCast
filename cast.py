@@ -1,10 +1,6 @@
-# -*- coding:utf-8 -*-
 #!/usr/bin/python
-__author__ = 'mmin18'
-__version__ = '1.50922'
-__plugin__ = '1'
-
-from subprocess import Popen, PIPE, check_call
+# -*- coding:utf-8 -*-
+from subprocess import Popen, PIPE
 from distutils.version import LooseVersion
 import argparse
 import sys
@@ -15,6 +11,12 @@ import time
 import shutil
 import json
 import zipfile
+
+# 颜色高亮
+from colorama import init
+
+init()
+from colorama import Fore, Back, Style
 
 
 # http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
@@ -51,9 +53,16 @@ def cexec(args, callback=cexec_fail_exit, addPath=None, exitcode=1):
     env = None
     if addPath:
         import copy
-
         env = copy.copy(os.environ)
         env['PATH'] = addPath + os.path.pathsep + env['PATH']
+
+    if args[0].endswith("aapt"):
+        print("--------\nCMD: %saapt %s%s %s\n--------" % (Fore.GREEN, args[1], Fore.RESET, " ".join(args[2:])))
+    elif args[0].endswith("adb"):
+        print("CMD: %sadb%s %s" % (Fore.GREEN, Fore.RESET, " ".join(args[1:])))
+    else:
+        print("CMD: %s" % (" ".join(args)))
+
     p = Popen(args, stdin=PIPE, stdout=PIPE, stderr=PIPE, env=env)
     output, err = p.communicate()
     code = p.returncode
@@ -65,7 +74,7 @@ def cexec(args, callback=cexec_fail_exit, addPath=None, exitcode=1):
 
 
 def curl(url, body=None, ignoreError=False, exitcode=1):
-    print ("URL: ", url)
+    print ("URL: %s%s%s" % (Fore.MAGENTA, url, Fore.RESET))
     import sys
 
     try:
@@ -702,7 +711,7 @@ def get_maven_jars(libs):
     return jars
 
 
-def scan_port(adbpath, pnlist, projlist):
+def scan_port(adbpaths, pnlist, projlist):
     """
     返回可用的 <端口, project_dir, packagename>
     :param adbpath:
@@ -716,7 +725,10 @@ def scan_port(adbpath, pnlist, projlist):
     for i in range(0, 10):
         try_port = (41128 + i)
         # 1. 通过adb做端口映射
-        cexec([adbpath, 'forward', 'tcp:%d' % try_port, 'tcp:%d' % try_port])
+        command = []
+        command.extend(adbpaths)
+        command.extend(['forward', 'tcp:%d' % try_port, 'tcp:%d' % try_port])
+        cexec(command)
 
         # 2. 然后 pnlist
         #        projlist
@@ -738,7 +750,10 @@ def scan_port(adbpath, pnlist, projlist):
     # 删除多余的端口映射
     for i in range(0, 10):
         if (41128 + i) != port:
-            cexec([adbpath, 'forward', '--remove', 'tcp:%d' % (41128 + i)], callback=None)
+            command = []
+            command.extend(adbpaths)
+            command.extend(['forward', '--remove', 'tcp:%d' % (41128 + i)])
+            cexec(command, callback=None)
     return port, prodir, packagename
 
 
@@ -747,6 +762,7 @@ if __name__ == "__main__":
     dir = '.'
     sdkdir = None
     jdkdir = None
+    device = None
 
     starttime = time.time()
 
@@ -755,7 +771,8 @@ if __name__ == "__main__":
         parser = argparse.ArgumentParser()
         parser.add_argument('--sdk', help='specify Android SDK path')
         parser.add_argument('--jdk', help='specify JDK path')
-        parser.add_argument('project')
+        parser.add_argument('--device', help='specify device')
+        parser.add_argument('--project', help="项目的目录, 默认为.")
         args = parser.parse_args()
         if args.sdk:
             sdkdir = args.sdk
@@ -763,6 +780,8 @@ if __name__ == "__main__":
             jdkdir = args.jdk
         if args.project:
             dir = args.project
+        if args.device:
+            device = args.device
 
     # 2. 获取有的 project list
     projlist = [i for i in list_projects(dir) if is_launchable_project(i)]
@@ -789,9 +808,15 @@ if __name__ == "__main__":
         print('adb not found in %s/platform-tools' % sdkdir)
         exit(4)
 
+    # 增加设备选择
+    if device:
+        adbpaths = [adbpath, "-s", device]
+    else:
+        adbpaths = [adbpath]
+
     # 1. 进行端口扫描
     #    如果同时运行多个apk, 如何知道哪一个apk是当前正在调试的呢?) appstate
-    port, dir, packagename = scan_port(adbpath, pnlist, projlist)
+    port, dir, packagename = scan_port(adbpaths, pnlist, projlist)
 
     # 2. 没有启动(则继续尝试等待)
     if port == 0:
@@ -799,19 +824,20 @@ if __name__ == "__main__":
         # launch app
         latest_package = get_latest_packagename(projlist, sdkdir)
         if latest_package:
-            cexec([adbpath, 'shell', 'monkey', '-p', latest_package, '-c', 'android.intent.category.LAUNCHER', '1'], callback=None)
+            command = []
+            command.extend(adbpaths)
+            command.extend(['shell', 'monkey', '-p', latest_package, '-c', 'android.intent.category.LAUNCHER', '1'])
+            cexec(command, callback=None)
             for i in range(0, 6):
                 # try 6 times to wait the application launches
-                port, dir, packagename = scan_port(adbpath, pnlist, projlist)
+                port, dir, packagename = scan_port(adbpaths, pnlist, projlist)
                 if port:
                     break
                 time.sleep(0.25)
 
     if port == 0:
-        print('package %s not found, make sure your project is properly setup and running' % (
-            len(pnlist) == 1 and pnlist[0] or pnlist))
+        print('package %s not found, make sure your project is properly setup and running' % (len(pnlist) == 1 and pnlist[0] or pnlist))
         exit(5)
-
 
     URL_LCAST = 'http://127.0.0.1:%d/lcast' % port
     URL_PUSH_DEX = 'http://127.0.0.1:%d/pushdex' % port
@@ -827,7 +853,7 @@ if __name__ == "__main__":
     # 用于判断手机是否支持: ART
     URL_VM_VERSION = 'http://127.0.0.1:%d/vmversion' % port
 
-    is_gradle = is_gradle_project(dir)
+    # is_gradle = is_gradle_project(dir)
 
     android_jar = get_android_jar(sdkdir)
     if not android_jar:
@@ -836,13 +862,14 @@ if __name__ == "__main__":
     deps = deps_list(dir)
 
     # build/lcast
-    bindir = is_gradle and os.path.join(dir, 'build', 'lcast') or os.path.join(dir, 'bin', 'lcast')
+    bindir = os.path.join(dir, 'build', 'lcast') or os.path.join(dir, 'bin', 'lcast')
 
     # check if the /res and /src has changed
     lastBuild = 0
 
     # 获取apk的路径(fpath, 以及build的时间)
-    rdir = is_gradle and os.path.join(dir, 'build', 'outputs', 'apk') or os.path.join(dir, 'bin')
+    # rdir = is_gradle and os.path.join(dir, 'build', 'outputs', 'apk') or os.path.join(dir, 'bin')
+    rdir = os.path.join(dir, 'build', 'outputs', 'apk') or os.path.join(dir, 'bin')
     if os.path.isdir(rdir):
         for fn in os.listdir(rdir):
             if fn.endswith('.apk') and not '-androidTest' in fn:
@@ -897,7 +924,6 @@ if __name__ == "__main__":
     resModified = latestResModified > lastBuild
     srcModified = latestSrcModified > lastBuild
 
-
     targets = ''
     if resModified and srcModified:
         targets = 'both /res and /src'
@@ -909,10 +935,8 @@ if __name__ == "__main__":
         print('%s has no /res or /src changes' % (packagename))
         exit(0)
 
-    if is_gradle:
-        print('cast %s:%d as gradle project with %s changed (v%s)' % (packagename, port, targets, __version__))
-    else:
-        print('cast %s:%d as eclipse project with %s changed (v%s)' % (packagename, port, targets, __version__))
+    print('cast %s:%d as gradle project with %s changed' % (packagename, port, targets))
+
 
     # prepare to reset
     # 如果代码修改了，直接进行: pcast
@@ -930,8 +954,6 @@ if __name__ == "__main__":
         binresdir = os.path.join(bindir, 'res')
         if not os.path.exists(os.path.join(binresdir, 'values')):
             os.makedirs(os.path.join(binresdir, 'values'))
-
-
 
         data = curl(URL_IDS, exitcode=8)
         with open(os.path.join(binresdir, 'values/ids.xml'), 'w') as fp:
@@ -968,10 +990,11 @@ if __name__ == "__main__":
             if rdir:
                 aaptargs.append('-S')
                 aaptargs.append(rdir)
-        if is_gradle:
-            for dep in reversed(list_aar_projects(dir, deps)):
-                aaptargs.append('-S')
-                aaptargs.append(dep)
+
+        # 只处理: gradle 的情况
+        for dep in reversed(list_aar_projects(dir, deps)):
+            aaptargs.append('-S')
+            aaptargs.append(dep)
         for assetdir in assetdirs:
             aaptargs.append('-A')
             aaptargs.append(assetdir)
@@ -983,8 +1006,8 @@ if __name__ == "__main__":
         aaptargs.append('-I')
         aaptargs.append(android_jar)
 
-        print("生成 res.zip文件：")
-        print(" ".join(aaptargs))
+
+        print(Fore.RED + "更新 res.zip 文件..." + Fore.RESET)
         cexec(aaptargs, exitcode=18)
 
         # 将 res.zip 推送到android手机
@@ -1003,6 +1026,7 @@ if __name__ == "__main__":
                 print('javac is required to compile java code, config your PATH to include javac')
                 exit(12)
 
+            print(Fore.RED + "更新 classes.dex 文件..." + Fore.RESET)
             launcher = curl(URL_LAUNCH, exitcode=13)
 
             # 获取所有的 jar 文件
@@ -1013,52 +1037,48 @@ if __name__ == "__main__":
                     for fjar in os.listdir(dlib):
                         if fjar.endswith('.jar'):
                             classpath.append(os.path.join(dlib, fjar))
-            if is_gradle:
-                # jars from maven cache
-                maven_libs = get_maven_libs(adeps)
-                maven_libs_cache_file = os.path.join(bindir, 'cache-javac-maven.json')
-                maven_libs_cache = {}
+
+            # jars from maven cache
+            maven_libs = get_maven_libs(adeps)
+            maven_libs_cache_file = os.path.join(bindir, 'cache-javac-maven.json')
+            maven_libs_cache = {}
+            if os.path.isfile(maven_libs_cache_file):
+                try:
+                    with open(maven_libs_cache_file, 'r') as fp:
+                        maven_libs_cache = json.load(fp)
+                except:
+                    pass
+            if maven_libs_cache.get('version') != 1 or not maven_libs_cache.get(
+                    'from') or sorted(maven_libs_cache['from']) != sorted(maven_libs):
                 if os.path.isfile(maven_libs_cache_file):
-                    try:
-                        with open(maven_libs_cache_file, 'r') as fp:
-                            maven_libs_cache = json.load(fp)
-                    except:
-                        pass
-                if maven_libs_cache.get('version') != 1 or not maven_libs_cache.get(
-                        'from') or sorted(maven_libs_cache['from']) != sorted(maven_libs):
-                    if os.path.isfile(maven_libs_cache_file):
-                        os.remove(maven_libs_cache_file)
-                    maven_libs_cache = {}
-                maven_jars = []
-                if maven_libs_cache:
-                    maven_jars = maven_libs_cache.get('jars')
-                elif maven_libs:
-                    maven_jars = get_maven_jars(maven_libs)
-                    cache = {'version': 1, 'from': maven_libs, 'jars': maven_jars}
-                    try:
-                        with open(maven_libs_cache_file, 'w') as fp:
-                            json.dump(cache, fp)
-                    except:
-                        pass
-                if maven_jars:
-                    classpath.extend(maven_jars)
-                # aars from exploded-aar
-                darr = os.path.join(dir, 'build', 'intermediates', 'exploded-aar')
-                # TODO: use the max version
-                for dirpath, dirnames, files in os.walk(darr):
-                    if re.findall(r'[/\\+]androidTest[/\\+]', dirpath) or '/.' in dirpath:
-                        continue
-                    for fn in files:
-                        if fn.endswith('.jar'):
-                            classpath.append(os.path.join(dirpath, fn))
-                # R.class
-                classesdir = search_path(os.path.join(dir, 'build', 'intermediates', 'classes'),
-                                         launcher and launcher.replace('.',
-                                                                       os.path.sep) + '.class' or '$')
-                classpath.append(classesdir)
-            else:
-                # R.class
-                classpath.append(os.path.join(dir, 'bin', 'classes'))
+                    os.remove(maven_libs_cache_file)
+                maven_libs_cache = {}
+            maven_jars = []
+            if maven_libs_cache:
+                maven_jars = maven_libs_cache.get('jars')
+            elif maven_libs:
+                maven_jars = get_maven_jars(maven_libs)
+                cache = {'version': 1, 'from': maven_libs, 'jars': maven_jars}
+                try:
+                    with open(maven_libs_cache_file, 'w') as fp:
+                        json.dump(cache, fp)
+                except:
+                    pass
+            if maven_jars:
+                classpath.extend(maven_jars)
+            # aars from exploded-aar
+            darr = os.path.join(dir, 'build', 'intermediates', 'exploded-aar')
+            # TODO: use the max version
+            for dirpath, dirnames, files in os.walk(darr):
+                if re.findall(r'[/\\+]androidTest[/\\+]', dirpath) or '/.' in dirpath:
+                    continue
+                for fn in files:
+                    if fn.endswith('.jar'):
+                        classpath.append(os.path.join(dirpath, fn))
+            # R.class
+            classesdir = search_path(os.path.join(dir, 'build', 'intermediates', 'classes'),
+                                     launcher and launcher.replace('.', os.path.sep) + '.class' or '$')
+            classpath.append(classesdir)
 
             binclassesdir = os.path.join(bindir, 'classes')
             shutil.rmtree(binclassesdir, ignore_errors=True)
@@ -1082,8 +1102,6 @@ if __name__ == "__main__":
                         os.remove(maven_libs_cache_file)
                 cexec_fail_exit(args, code, stdout, stderr)
 
-            print("javacargs: ")
-            print(" ".join(javacargs))
 
             cexec(javacargs, callback=remove_cache_and_exit, exitcode=19)
 
@@ -1099,9 +1117,6 @@ if __name__ == "__main__":
                 # fix system32 java.exe issue
                 addPath = os.path.abspath(os.path.join(javac, os.pardir))
 
-            print("Dex Create: ")
-            print(" ".join([dxpath, '--dex', '--output=%s' % dxoutput, binclassesdir]))
-
             cexec([dxpath, '--dex', '--output=%s' % dxoutput, binclassesdir], addPath=addPath,
                   exitcode=20)
 
@@ -1110,16 +1125,16 @@ if __name__ == "__main__":
                 curl(URL_PUSH_DEX, body=fp.read(), exitcode=15)
 
         else:
-            if is_gradle:
-                print('LayoutCast library out of date, please sync your project with gradle')
-            else:
-                print('libs/lcast.jar is out of date, please update')
+            print('LayoutCast library out of date, please sync your project with gradle')
 
     # lcast
     curl(URL_LCAST, ignoreError=True)
 
     # 工作结束
-    cexec([adbpath, 'forward', '--remove', 'tcp:%d' % port], callback=None)
+    command = []
+    command.extend(adbpaths)
+    command.extend(['forward', '--remove', 'tcp:%d' % port])
+    cexec(command, callback=None)
 
     elapsetime = time.time() - starttime
     print('finished in %dms' % (elapsetime * 1000))
