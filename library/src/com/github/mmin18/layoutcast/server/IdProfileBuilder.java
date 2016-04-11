@@ -33,11 +33,10 @@ public class IdProfileBuilder {
 	}
 
 	private void buildIds(StringBuilder out, Class<?> clazz) throws Exception {
+		// 统计Ids的最大最小数值
 		int start = 0, end = 0;
 		for (Field f : clazz.getDeclaredFields()) {
-			if (Integer.TYPE.equals(f.getType())
-					&& java.lang.reflect.Modifier.isStatic(f.getModifiers())
-					&& java.lang.reflect.Modifier.isPublic(f.getModifiers())) {
+			if (Integer.TYPE.equals(f.getType()) && java.lang.reflect.Modifier.isStatic(f.getModifiers()) && java.lang.reflect.Modifier.isPublic(f.getModifiers())) {
 				int i = f.getInt(null);
 				if ((i & 0x7f000000) == 0x7f000000) {
 					if (start == 0 || i < start) {
@@ -50,6 +49,8 @@ public class IdProfileBuilder {
 			}
 		}
 
+		// Type
+		// EntryName
 		for (int i = start; i > 0 && i <= end; i++) {
 			out.append("  <item type=\"");
 			out.append(res.getResourceTypeName(i));

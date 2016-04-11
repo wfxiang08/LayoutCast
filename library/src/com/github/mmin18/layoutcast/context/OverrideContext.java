@@ -79,8 +79,7 @@ public class OverrideContext extends ContextWrapper {
 			fBase.set(orig, oc);
 		}
 
-		Field fResources = ContextThemeWrapper.class
-				.getDeclaredField("mResources");
+		Field fResources = ContextThemeWrapper.class.getDeclaredField("mResources");
 		fResources.setAccessible(true);
 		fResources.set(orig, null);
 

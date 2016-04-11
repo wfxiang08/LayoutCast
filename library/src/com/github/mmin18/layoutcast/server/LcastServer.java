@@ -40,7 +40,8 @@ public class LcastServer extends EmbedHttpServer {
     public static final int PORT_FROM = 41128;
     public static Application app;
     final Context context;
-    File latestPushFile;
+
+    File latestPushFile; // 最新的资源文件
 
     private LcastServer(Context ctx, int port) {
         super(port);
@@ -59,14 +60,14 @@ public class LcastServer extends EmbedHttpServer {
             return;
         }
 
-        // 2. 获取App State
+        // 2. 获取App State: 2 表示正常前台运行
         if (path.equalsIgnoreCase("/appstate")) {
             response.setContentTypeText();
             response.write(String.valueOf(OverrideContext.getApplicationState()).getBytes("utf-8"));
             return;
         }
 
-        // 2. 获取
+        // 2. 获取vm版本: 2.xx 表示支持 ART
         //    http://stackoverflow.com/questions/19830342/how-can-i-detect-the-android-runtime-dalvik-or-art
         //    https://source.android.com/devices/tech/dalvik/
         if ("/vmversion".equalsIgnoreCase(path)) {
@@ -79,15 +80,19 @@ public class LcastServer extends EmbedHttpServer {
             }
             return;
         }
+
+        // 3. 获取:
         if ("/launcher".equalsIgnoreCase(path)) {
             PackageManager pm = app.getPackageManager();
+
+            //
             Intent i = new Intent(Intent.ACTION_MAIN);
             i.addCategory(Intent.CATEGORY_LAUNCHER);
             i.setPackage(app.getPackageName());
             ResolveInfo ri = pm.resolveActivity(i, 0);
 
-            i = new Intent(Intent.ACTION_MAIN);
-            i.addCategory(Intent.CATEGORY_LAUNCHER);
+//            i = new Intent(Intent.ACTION_MAIN);
+//            i.addCategory(Intent.CATEGORY_LAUNCHER);
 
             // 获取launcher的界面
             response.setContentTypeText();
@@ -96,8 +101,7 @@ public class LcastServer extends EmbedHttpServer {
         }
 
         // pushres 如何处理呢?
-        if (("post".equalsIgnoreCase(method) || "put".equalsIgnoreCase(method))
-                && path.equalsIgnoreCase("/pushres")) {
+        if (("post".equalsIgnoreCase(method) || "put".equalsIgnoreCase(method)) && path.equalsIgnoreCase("/pushres")) {
             File dir = new File(context.getCacheDir(), "lcast");
             dir.mkdir();
 
@@ -128,6 +132,8 @@ public class LcastServer extends EmbedHttpServer {
             Log.d("lcast", "lcast resources file received (" + file.length() + " bytes): " + file);
             return;
         }
+
+
         if (("post".equalsIgnoreCase(method) || "put".equalsIgnoreCase(method)) && path.equalsIgnoreCase("/pushdex")) {
             File dir = new File(context.getCacheDir(), "lcast");
             dir.mkdir();
@@ -154,9 +160,11 @@ public class LcastServer extends EmbedHttpServer {
             response.setStatusCode(200);
             return;
         }
+
         if ("/lcast".equalsIgnoreCase(path)) {
             File dir = new File(context.getCacheDir(), "lcast");
             File dex = new File(dir, "dex.ped");
+
             if (dex.length() > 0) {
                 if (latestPushFile != null) {
                     File f = new File(dir, "res.ped");
@@ -166,8 +174,11 @@ public class LcastServer extends EmbedHttpServer {
                 boolean b = LayoutCast.restart(true);
                 response.setStatusCode(b ? 200 : 500);
             } else {
+
+                // 没有代码的修改
                 Resources res = ResUtils.getResources(app, latestPushFile);
                 OverrideContext.setGlobalResources(res);
+
                 response.setStatusCode(200);
                 response.write(String.valueOf(latestPushFile).getBytes("utf-8"));
                 Log.i("lcast", "cast with only res changes, just recreate the running activity.");
@@ -183,23 +194,23 @@ public class LcastServer extends EmbedHttpServer {
         if ("/ids.xml".equalsIgnoreCase(path)) {
             String Rn = app.getPackageName() + ".R";
             Class<?> Rclazz = app.getClassLoader().loadClass(Rn);
-            String str = new IdProfileBuilder(context.getResources())
-                    .buildIds(Rclazz);
+            String str = new IdProfileBuilder(context.getResources()).buildIds(Rclazz);
             response.setStatusCode(200);
             response.setContentTypeText();
             response.write(str.getBytes("utf-8"));
             return;
         }
+
         if ("/public.xml".equalsIgnoreCase(path)) {
             String Rn = app.getPackageName() + ".R";
             Class<?> Rclazz = app.getClassLoader().loadClass(Rn);
-            String str = new IdProfileBuilder(context.getResources())
-                    .buildPublic(Rclazz);
+            String str = new IdProfileBuilder(context.getResources()).buildPublic(Rclazz);
             response.setStatusCode(200);
             response.setContentTypeText();
             response.write(str.getBytes("utf-8"));
             return;
         }
+
         if ("/apkinfo".equalsIgnoreCase(path)) {
             ApplicationInfo ai = app.getApplicationInfo();
             File apkFile = new File(ai.sourceDir);
@@ -222,6 +233,8 @@ public class LcastServer extends EmbedHttpServer {
             response.write(result.toString().getBytes("utf-8"));
             return;
         }
+
+        // 获取原始的apk数据
         if ("/apkraw".equalsIgnoreCase(path)) {
             ApplicationInfo ai = app.getApplicationInfo();
             FileInputStream fis = new FileInputStream(ai.sourceDir);
@@ -234,6 +247,7 @@ public class LcastServer extends EmbedHttpServer {
             }
             return;
         }
+
         if (path.startsWith("/fileinfo/")) {
             ApplicationInfo ai = app.getApplicationInfo();
             File apkFile = new File(ai.sourceDir);
@@ -262,10 +276,12 @@ public class LcastServer extends EmbedHttpServer {
             response.write(result.toString().getBytes("utf-8"));
             return;
         }
+
         if (path.startsWith("/fileraw/")) {
             ApplicationInfo ai = app.getApplicationInfo();
             File apkFile = new File(ai.sourceDir);
 
+            // 从jarFile中读取raw数据
             JarFile jarFile = new JarFile(apkFile);
             JarEntry je = jarFile.getJarEntry(path.substring("/fileraw/".length()));
             InputStream ins = jarFile.getInputStream(je);
