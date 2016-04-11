@@ -37,273 +37,301 @@ import java.util.jar.JarFile;
  * @author mmin18
  */
 public class LcastServer extends EmbedHttpServer {
-	public static final int PORT_FROM = 41128;
-	public static Application app;
-	final Context context;
-	File latestPushFile;
+    public static final int PORT_FROM = 41128;
+    public static Application app;
+    final Context context;
+    File latestPushFile;
 
-	private LcastServer(Context ctx, int port) {
-		super(port);
-		context = ctx;
-	}
+    private LcastServer(Context ctx, int port) {
+        super(port);
+        context = ctx;
+    }
 
-	@Override
-	protected void handle(String method, String path,
-						  HashMap<String, String> headers, InputStream input,
-						  ResponseOutputStream response) throws Exception {
-		if (path.equalsIgnoreCase("/packagename")) {
-			response.setContentTypeText();
-			response.write(context.getPackageName().getBytes("utf-8"));
-			return;
-		}
-		if (path.equalsIgnoreCase("/appstate")) {
-			response.setContentTypeText();
-			response.write(String.valueOf(OverrideContext.getApplicationState()).getBytes("utf-8"));
-			return;
-		}
-		if ("/vmversion".equalsIgnoreCase(path)) {
-			final String vmVersion = System.getProperty("java.vm.version");
-			response.setContentTypeText();
-			if (vmVersion == null) {
-				response.write('0');
-			} else {
-				response.write(vmVersion.getBytes("utf-8"));
-			}
-			return;
-		}
-		if ("/launcher".equalsIgnoreCase(path)) {
-			PackageManager pm = app.getPackageManager();
-			Intent i = new Intent(Intent.ACTION_MAIN);
-			i.addCategory(Intent.CATEGORY_LAUNCHER);
-			i.setPackage(app.getPackageName());
-			ResolveInfo ri = pm.resolveActivity(i, 0);
-			i = new Intent(Intent.ACTION_MAIN);
-			i.addCategory(Intent.CATEGORY_LAUNCHER);
-			response.setContentTypeText();
-			response.write(ri.activityInfo.name.getBytes("utf-8"));
-			return;
-		}
-		if (("post".equalsIgnoreCase(method) || "put".equalsIgnoreCase(method))
-				&& path.equalsIgnoreCase("/pushres")) {
-			File dir = new File(context.getCacheDir(), "lcast");
-			dir.mkdir();
-			File dex = new File(dir, "dex.ped");
-			File file;
-			if (dex.length() > 0) {
-				file = new File(dir, "res.ped");
-			} else {
-				file = new File(dir, Integer.toHexString((int) (System
-						.currentTimeMillis() / 100) & 0xfff) + ".apk");
-			}
-			FileOutputStream fos = new FileOutputStream(file);
-			byte[] buf = new byte[4096];
-			int l;
-			while ((l = input.read(buf)) != -1) {
-				fos.write(buf, 0, l);
-			}
-			fos.close();
-			latestPushFile = file;
-			response.setStatusCode(201);
-			Log.d("lcast", "lcast resources file received (" + file.length()
-					+ " bytes): " + file);
-			return;
-		}
-		if (("post".equalsIgnoreCase(method) || "put".equalsIgnoreCase(method))
-				&& path.equalsIgnoreCase("/pushdex")) {
-			File dir = new File(context.getCacheDir(), "lcast");
-			dir.mkdir();
-			File file = new File(dir, "dex.ped");
-			FileOutputStream fos = new FileOutputStream(file);
-			byte[] buf = new byte[4096];
-			int l;
-			while ((l = input.read(buf)) != -1) {
-				fos.write(buf, 0, l);
-			}
-			fos.close();
-			response.setStatusCode(201);
-			Log.d("lcast", "lcast dex file received (" + file.length() + " bytes)");
-			return;
-		}
-		if ("/pcast".equalsIgnoreCase(path)) {
-			LayoutCast.restart(false);
-			response.setStatusCode(200);
-			return;
-		}
-		if ("/lcast".equalsIgnoreCase(path)) {
-			File dir = new File(context.getCacheDir(), "lcast");
-			File dex = new File(dir, "dex.ped");
-			if (dex.length() > 0) {
-				if (latestPushFile != null) {
-					File f = new File(dir, "res.ped");
-					latestPushFile.renameTo(f);
-				}
-				Log.i("lcast", "cast with dex changes, need to restart the process (activity stack will be reserved)");
-				boolean b = LayoutCast.restart(true);
-				response.setStatusCode(b ? 200 : 500);
-			} else {
-				Resources res = ResUtils.getResources(app, latestPushFile);
-				OverrideContext.setGlobalResources(res);
-				response.setStatusCode(200);
-				response.write(String.valueOf(latestPushFile).getBytes("utf-8"));
-				Log.i("lcast", "cast with only res changes, just recreate the running activity.");
-			}
-			return;
-		}
-		if ("/reset".equalsIgnoreCase(path)) {
-			OverrideContext.setGlobalResources(null);
-			response.setStatusCode(200);
-			response.write("OK".getBytes("utf-8"));
-			return;
-		}
-		if ("/ids.xml".equalsIgnoreCase(path)) {
-			String Rn = app.getPackageName() + ".R";
-			Class<?> Rclazz = app.getClassLoader().loadClass(Rn);
-			String str = new IdProfileBuilder(context.getResources())
-					.buildIds(Rclazz);
-			response.setStatusCode(200);
-			response.setContentTypeText();
-			response.write(str.getBytes("utf-8"));
-			return;
-		}
-		if ("/public.xml".equalsIgnoreCase(path)) {
-			String Rn = app.getPackageName() + ".R";
-			Class<?> Rclazz = app.getClassLoader().loadClass(Rn);
-			String str = new IdProfileBuilder(context.getResources())
-					.buildPublic(Rclazz);
-			response.setStatusCode(200);
-			response.setContentTypeText();
-			response.write(str.getBytes("utf-8"));
-			return;
-		}
-		if ("/apkinfo".equalsIgnoreCase(path)) {
-			ApplicationInfo ai = app.getApplicationInfo();
-			File apkFile = new File(ai.sourceDir);
-			JSONObject result = new JSONObject();
-			result.put("size", apkFile.length());
-			result.put("lastModified", apkFile.lastModified());
+    @Override
+    protected void handle(String method, String path,
+                          HashMap<String, String> headers, InputStream input,
+                          ResponseOutputStream response) throws Exception {
+        // 1. 获取Context的pacakgename
+        if (path.equalsIgnoreCase("/packagename")) {
+            response.setContentTypeText();
+            // 范围当前Context的PackageName
+            response.write(context.getPackageName().getBytes("utf-8"));
+            return;
+        }
 
-			FileInputStream fis = new FileInputStream(apkFile);
-			MessageDigest md5 = MessageDigest.getInstance("MD5");
-			byte[] buf = new byte[4096];
-			int l;
-			while ((l = fis.read(buf)) != -1) {
-				md5.update(buf, 0, l);
-			}
-			fis.close();
+        // 2. 获取App State
+        if (path.equalsIgnoreCase("/appstate")) {
+            response.setContentTypeText();
+            response.write(String.valueOf(OverrideContext.getApplicationState()).getBytes("utf-8"));
+            return;
+        }
 
-			result.put("md5", byteArrayToHex(md5.digest()));
-			response.setStatusCode(200);
-			response.setContentTypeJson();
-			response.write(result.toString().getBytes("utf-8"));
-			return;
-		}
-		if ("/apkraw".equalsIgnoreCase(path)) {
-			ApplicationInfo ai = app.getApplicationInfo();
-			FileInputStream fis = new FileInputStream(ai.sourceDir);
-			response.setStatusCode(200);
-			response.setContentTypeBinary();
-			byte[] buf = new byte[4096];
-			int l;
-			while ((l = fis.read(buf)) != -1) {
-				response.write(buf, 0, l);
-			}
-			return;
-		}
-		if (path.startsWith("/fileinfo/")) {
-			ApplicationInfo ai = app.getApplicationInfo();
-			File apkFile = new File(ai.sourceDir);
+        // 2. 获取
+        //    http://stackoverflow.com/questions/19830342/how-can-i-detect-the-android-runtime-dalvik-or-art
+        //    https://source.android.com/devices/tech/dalvik/
+        if ("/vmversion".equalsIgnoreCase(path)) {
+            final String vmVersion = System.getProperty("java.vm.version");
+            response.setContentTypeText();
+            if (vmVersion == null) {
+                response.write('0');
+            } else {
+                response.write(vmVersion.getBytes("utf-8"));
+            }
+            return;
+        }
+        if ("/launcher".equalsIgnoreCase(path)) {
+            PackageManager pm = app.getPackageManager();
+            Intent i = new Intent(Intent.ACTION_MAIN);
+            i.addCategory(Intent.CATEGORY_LAUNCHER);
+            i.setPackage(app.getPackageName());
+            ResolveInfo ri = pm.resolveActivity(i, 0);
 
-			JarFile jarFile = new JarFile(apkFile);
-			JarEntry je = jarFile.getJarEntry(path.substring("/fileinfo/".length()));
-			InputStream ins = jarFile.getInputStream(je);
-			MessageDigest md5 = MessageDigest.getInstance("MD5");
-			byte[] buf = new byte[4096];
-			int l, n = 0;
-			while ((l = ins.read(buf)) != -1) {
-				md5.update(buf, 0, l);
-				n += l;
-			}
-			ins.close();
-			jarFile.close();
+            i = new Intent(Intent.ACTION_MAIN);
+            i.addCategory(Intent.CATEGORY_LAUNCHER);
 
-			JSONObject result = new JSONObject();
-			result.put("size", n);
-			result.put("time", je.getTime());
-			result.put("crc", je.getCrc());
-			result.put("md5", byteArrayToHex(md5.digest()));
+            // 获取launcher的界面
+            response.setContentTypeText();
+            response.write(ri.activityInfo.name.getBytes("utf-8"));
+            return;
+        }
 
-			response.setStatusCode(200);
-			response.setContentTypeJson();
-			response.write(result.toString().getBytes("utf-8"));
-			return;
-		}
-		if (path.startsWith("/fileraw/")) {
-			ApplicationInfo ai = app.getApplicationInfo();
-			File apkFile = new File(ai.sourceDir);
+        // pushres 如何处理呢?
+        if (("post".equalsIgnoreCase(method) || "put".equalsIgnoreCase(method))
+                && path.equalsIgnoreCase("/pushres")) {
+            File dir = new File(context.getCacheDir(), "lcast");
+            dir.mkdir();
 
-			JarFile jarFile = new JarFile(apkFile);
-			JarEntry je = jarFile.getJarEntry(path.substring("/fileraw/".length()));
-			InputStream ins = jarFile.getInputStream(je);
+            // lcast/
+            //      dex.ped
+            //      res.ped
+            //      xxxx.apk
+            File dex = new File(dir, "dex.ped");
+            File file;
+            if (dex.length() > 0) {
+                file = new File(dir, "res.ped");
+            } else {
+                file = new File(dir, Integer.toHexString((int) (System.currentTimeMillis() / 100) & 0xfff) + ".apk");
+            }
 
-			response.setStatusCode(200);
-			response.setContentTypeBinary();
-			byte[] buf = new byte[4096];
-			int l;
-			while ((l = ins.read(buf)) != -1) {
-				response.write(buf, 0, l);
-			}
-			return;
-		}
-		super.handle(method, path, headers, input, response);
-	}
+            // 通过Http Post发送什么信息呢?
+            // dex.ped
+            // *.apk
+            FileOutputStream fos = new FileOutputStream(file);
+            byte[] buf = new byte[4096];
+            int l;
+            while ((l = input.read(buf)) != -1) {
+                fos.write(buf, 0, l);
+            }
+            fos.close();
+            latestPushFile = file;
+            response.setStatusCode(201);
+            Log.d("lcast", "lcast resources file received (" + file.length() + " bytes): " + file);
+            return;
+        }
+        if (("post".equalsIgnoreCase(method) || "put".equalsIgnoreCase(method)) && path.equalsIgnoreCase("/pushdex")) {
+            File dir = new File(context.getCacheDir(), "lcast");
+            dir.mkdir();
 
-	private static LcastServer runningServer;
+            // lcast/
+            //       dex.ped
+            //
+            File file = new File(dir, "dex.ped");
+            FileOutputStream fos = new FileOutputStream(file);
+            byte[] buf = new byte[4096];
+            int l;
+            while ((l = input.read(buf)) != -1) {
+                fos.write(buf, 0, l);
+            }
+            fos.close();
+            response.setStatusCode(201);
+            Log.d("lcast", "lcast dex file received (" + file.length() + " bytes)");
+            return;
+        }
 
-	public static void start(Context ctx) {
-		if (runningServer != null) {
-			Log.d("lcast", "lcast server is already running");
-			return;
-		}
+        // 如何重启呢?
+        if ("/pcast".equalsIgnoreCase(path)) {
+            LayoutCast.restart(false);
+            response.setStatusCode(200);
+            return;
+        }
+        if ("/lcast".equalsIgnoreCase(path)) {
+            File dir = new File(context.getCacheDir(), "lcast");
+            File dex = new File(dir, "dex.ped");
+            if (dex.length() > 0) {
+                if (latestPushFile != null) {
+                    File f = new File(dir, "res.ped");
+                    latestPushFile.renameTo(f);
+                }
+                Log.i("lcast", "cast with dex changes, need to restart the process (activity stack will be reserved)");
+                boolean b = LayoutCast.restart(true);
+                response.setStatusCode(b ? 200 : 500);
+            } else {
+                Resources res = ResUtils.getResources(app, latestPushFile);
+                OverrideContext.setGlobalResources(res);
+                response.setStatusCode(200);
+                response.write(String.valueOf(latestPushFile).getBytes("utf-8"));
+                Log.i("lcast", "cast with only res changes, just recreate the running activity.");
+            }
+            return;
+        }
+        if ("/reset".equalsIgnoreCase(path)) {
+            OverrideContext.setGlobalResources(null);
+            response.setStatusCode(200);
+            response.write("OK".getBytes("utf-8"));
+            return;
+        }
+        if ("/ids.xml".equalsIgnoreCase(path)) {
+            String Rn = app.getPackageName() + ".R";
+            Class<?> Rclazz = app.getClassLoader().loadClass(Rn);
+            String str = new IdProfileBuilder(context.getResources())
+                    .buildIds(Rclazz);
+            response.setStatusCode(200);
+            response.setContentTypeText();
+            response.write(str.getBytes("utf-8"));
+            return;
+        }
+        if ("/public.xml".equalsIgnoreCase(path)) {
+            String Rn = app.getPackageName() + ".R";
+            Class<?> Rclazz = app.getClassLoader().loadClass(Rn);
+            String str = new IdProfileBuilder(context.getResources())
+                    .buildPublic(Rclazz);
+            response.setStatusCode(200);
+            response.setContentTypeText();
+            response.write(str.getBytes("utf-8"));
+            return;
+        }
+        if ("/apkinfo".equalsIgnoreCase(path)) {
+            ApplicationInfo ai = app.getApplicationInfo();
+            File apkFile = new File(ai.sourceDir);
+            JSONObject result = new JSONObject();
+            result.put("size", apkFile.length());
+            result.put("lastModified", apkFile.lastModified());
 
-		for (int i = 0; i < 100; i++) {
-			LcastServer s = new LcastServer(ctx, PORT_FROM + i);
-			try {
-				s.start();
-				runningServer = s;
-				Log.d("lcast", "lcast server running on port "
-						+ (PORT_FROM + i));
-				break;
-			} catch (Exception e) {
-			}
-		}
-	}
+            FileInputStream fis = new FileInputStream(apkFile);
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+            byte[] buf = new byte[4096];
+            int l;
+            while ((l = fis.read(buf)) != -1) {
+                md5.update(buf, 0, l);
+            }
+            fis.close();
 
-	public static void cleanCache(Context ctx) {
-		File dir = new File(ctx.getCacheDir(), "lcast");
-		File[] fs = dir.listFiles();
-		if (fs != null) {
-			for (File f : fs) {
-				rm(f);
-			}
-		}
-	}
+            result.put("md5", byteArrayToHex(md5.digest()));
+            response.setStatusCode(200);
+            response.setContentTypeJson();
+            response.write(result.toString().getBytes("utf-8"));
+            return;
+        }
+        if ("/apkraw".equalsIgnoreCase(path)) {
+            ApplicationInfo ai = app.getApplicationInfo();
+            FileInputStream fis = new FileInputStream(ai.sourceDir);
+            response.setStatusCode(200);
+            response.setContentTypeBinary();
+            byte[] buf = new byte[4096];
+            int l;
+            while ((l = fis.read(buf)) != -1) {
+                response.write(buf, 0, l);
+            }
+            return;
+        }
+        if (path.startsWith("/fileinfo/")) {
+            ApplicationInfo ai = app.getApplicationInfo();
+            File apkFile = new File(ai.sourceDir);
 
-	private static void rm(File f) {
-		if (f.isDirectory()) {
-			for (File ff : f.listFiles()) {
-				rm(ff);
-			}
-			f.delete();
-		} else if (f.getName().endsWith(".apk")) {
-			f.delete();
-		}
-	}
+            JarFile jarFile = new JarFile(apkFile);
+            JarEntry je = jarFile.getJarEntry(path.substring("/fileinfo/".length()));
+            InputStream ins = jarFile.getInputStream(je);
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+            byte[] buf = new byte[4096];
+            int l, n = 0;
+            while ((l = ins.read(buf)) != -1) {
+                md5.update(buf, 0, l);
+                n += l;
+            }
+            ins.close();
+            jarFile.close();
 
-	private static String byteArrayToHex(byte[] a) {
-		StringBuilder sb = new StringBuilder(a.length * 2);
-		for (byte b : a)
-			sb.append(String.format("%02x", b & 0xff));
-		return sb.toString();
-	}
+            JSONObject result = new JSONObject();
+            result.put("size", n);
+            result.put("time", je.getTime());
+            result.put("crc", je.getCrc());
+            result.put("md5", byteArrayToHex(md5.digest()));
+
+            response.setStatusCode(200);
+            response.setContentTypeJson();
+            response.write(result.toString().getBytes("utf-8"));
+            return;
+        }
+        if (path.startsWith("/fileraw/")) {
+            ApplicationInfo ai = app.getApplicationInfo();
+            File apkFile = new File(ai.sourceDir);
+
+            JarFile jarFile = new JarFile(apkFile);
+            JarEntry je = jarFile.getJarEntry(path.substring("/fileraw/".length()));
+            InputStream ins = jarFile.getInputStream(je);
+
+            response.setStatusCode(200);
+            response.setContentTypeBinary();
+            byte[] buf = new byte[4096];
+            int l;
+            while ((l = ins.read(buf)) != -1) {
+                response.write(buf, 0, l);
+            }
+            return;
+        }
+        super.handle(method, path, headers, input, response);
+    }
+
+    private static LcastServer runningServer;
+
+    public static void start(Context ctx) {
+        if (runningServer != null) {
+            Log.d("lcast", "lcast server is already running");
+            return;
+        }
+
+        // 如何启动一个Server呢?
+        // 在指定的返回内监听端口
+        for (int i = 0; i < 100; i++) {
+            LcastServer s = new LcastServer(ctx, PORT_FROM + i);
+            try {
+                s.start();
+                runningServer = s;
+                Log.d("lcast", "lcast server running on port " + (PORT_FROM + i));
+                break;
+            } catch (Exception e) {
+            }
+        }
+    }
+
+    // 删除: lcast内的所有的文件
+    public static void cleanCache(Context ctx) {
+        File dir = new File(ctx.getCacheDir(), "lcast");
+        File[] fs = dir.listFiles();
+        if (fs != null) {
+            for (File f : fs) {
+                rm(f);
+            }
+        }
+    }
+
+    // 递归删除文件
+    private static void rm(File f) {
+        if (f.isDirectory()) {
+            for (File ff : f.listFiles()) {
+                rm(ff);
+            }
+            f.delete();
+        } else if (f.getName().endsWith(".apk")) {
+            f.delete();
+        }
+    }
+
+    private static String byteArrayToHex(byte[] a) {
+        StringBuilder sb = new StringBuilder(a.length * 2);
+        for (byte b : a)
+            sb.append(String.format("%02x", b & 0xff));
+        return sb.toString();
+    }
 
 }

@@ -42,6 +42,7 @@ public class LayoutCast {
 			opt.mkdirs();
 			final String vmVersion = System.getProperty("java.vm.version");
 			if (vmVersion != null && vmVersion.startsWith("2")) {
+				// 直接将新的dex文件放在class loader的dex列表之前
 				ArtUtils.overrideClassLoader(app.getClassLoader(), f, opt);
 			} else {
 				Log.e("lcast", "cannot cast dex to daivik, only support ART now.");

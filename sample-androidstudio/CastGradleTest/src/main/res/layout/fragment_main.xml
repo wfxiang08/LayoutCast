@@ -12,11 +12,20 @@
 		android:padding="6dp"
 		android:text="@string/hello_world"/>
 
+	<TextView
+		android:id="@+id/text2"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_below="@id/text"
+		android:layout_marginBottom="10dp"
+		android:padding="6dp"
+		android:text="大家好, 感觉这个还是不错的"/>
+
 	<ListView
 		android:id="@android:id/list"
 		android:layout_width="match_parent"
 		android:layout_height="0px"
 		android:layout_alignParentBottom="true"
-		android:layout_below="@+id/text"></ListView>
+		android:layout_below="@+id/text2"></ListView>
 
 </RelativeLayout>

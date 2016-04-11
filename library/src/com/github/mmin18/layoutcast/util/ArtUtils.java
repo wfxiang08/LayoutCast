@@ -14,33 +14,52 @@ import dalvik.system.DexClassLoader;
  */
 public class ArtUtils {
 
-	public static boolean overrideClassLoader(ClassLoader cl, File dex, File opt) {
-		try {
-			ClassLoader bootstrap = cl.getParent();
-			Field fPathList = BaseDexClassLoader.class.getDeclaredField("pathList");
-			fPathList.setAccessible(true);
-			Object pathList = fPathList.get(cl);
-			Class cDexPathList = bootstrap.loadClass("dalvik.system.DexPathList");
-			Field fDexElements = cDexPathList.getDeclaredField("dexElements");
-			fDexElements.setAccessible(true);
-			Object dexElements = fDexElements.get(pathList);
-			DexClassLoader cl2 = new DexClassLoader(dex.getAbsolutePath(), opt.getAbsolutePath(), null, bootstrap);
-			Object pathList2 = fPathList.get(cl2);
-			Object dexElements2 = fDexElements.get(pathList2);
-			Object element2 = Array.get(dexElements2, 0);
-			int n = Array.getLength(dexElements) + 1;
-			Object newDexElements = Array.newInstance(fDexElements.getType().getComponentType(), n);
-			Array.set(newDexElements, 0, element2);
-			for (int i = 0; i < n - 1; i++) {
-				Object element = Array.get(dexElements, i);
-				Array.set(newDexElements, i + 1, element);
-			}
-			fDexElements.set(pathList, newDexElements);
-			return true;
-		} catch (Exception e) {
-			Log.e("lcast", "fail to override classloader " + cl + " with " + dex, e);
-			return false;
-		}
-	}
+    public static boolean overrideClassLoader(ClassLoader cl, File dex, File opt) {
+        try {
+            // 重新定义: Class Loader?
+            ClassLoader bootstrap = cl.getParent();
+
+            // 1. 获取第一个 Field: pathList(修改: Accessible)
+            Field fPathList = BaseDexClassLoader.class.getDeclaredField("pathList");
+            fPathList.setAccessible(true);
+
+            Object pathList = fPathList.get(cl);
+
+
+            // ClassLoader --> Field pathList --> pathList
+
+            // 2. 获取第二个 Field
+            Class cDexPathList = bootstrap.loadClass("dalvik.system.DexPathList");
+            Field fDexElements = cDexPathList.getDeclaredField("dexElements");
+            fDexElements.setAccessible(true);
+
+
+            Object dexElements = fDexElements.get(pathList);
+
+            // 加载: dex
+            DexClassLoader cl2 = new DexClassLoader(dex.getAbsolutePath(), opt.getAbsolutePath(), null, bootstrap);
+            Object pathList2 = fPathList.get(cl2);
+            Object dexElements2 = fDexElements.get(pathList2);  // 读取: dexElements
+
+            // 读取新的: dexElements
+            Object element2 = Array.get(dexElements2, 0);
+            int n = Array.getLength(dexElements) + 1;
+
+
+            Object newDexElements = Array.newInstance(fDexElements.getType().getComponentType(), n);
+            Array.set(newDexElements, 0, element2);
+
+            // 将: dexElements 拷贝到: newDexElements 后面
+            for (int i = 0; i < n - 1; i++) {
+                Object element = Array.get(dexElements, i);
+                Array.set(newDexElements, i + 1, element);
+            }
+            fDexElements.set(pathList, newDexElements);
+            return true;
+        } catch (Exception e) {
+            Log.e("lcast", "fail to override classloader " + cl + " with " + dex, e);
+            return false;
+        }
+    }
 
 }

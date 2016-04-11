@@ -22,6 +22,8 @@ public class ResetActivity extends Activity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+
+		// 提示正在Cast DEX
 		TextView tv = new TextView(this);
 		tv.setGravity(Gravity.CENTER);
 		tv.setText("Cast DEX in 2 second..");
@@ -54,6 +56,7 @@ public class ResetActivity extends Activity {
 	private final Runnable reset = new Runnable() {
 		@Override
 		public void run() {
+			// 自杀之后呢?
 			android.os.Process.killProcess(Process.myPid());
 		}
 	};
