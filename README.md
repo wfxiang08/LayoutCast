@@ -16,13 +16,6 @@
 
 ## 2. 如何和Android Studio集成呢?
 
-* 安装插件(安装一次就OK)
-	1. Download Android Studio / Intellij plugin <https://github.com/mmin18/LayoutCast/raw/master/ide/IDEAPlugin/IDEAPlugin.jar>
-	2. In Android Studio, go to `Preferences` > `Plugins` > `Install plugin from disk...`
-	3. Choose the downloaded file from step #1 to install the plugin.
-		* After restart, you should find a button at right of the run section: 
-		* ![TOOLBAR](images/sc_toolbar.png)
-
 * Android Project & Build System Changes
 	* 添加依赖
 ```gradle
@@ -58,7 +51,7 @@ public class MyApplication extends Application {
 
 * 运行
 	* 正常运行Android项目
-	* 修改资源或者Java代码, 然后: `./cast.py` 或点击: Android Studio`工具栏上的按钮`
+	* 修改资源或者Java代码, 然后: `./cast.py` （`不建议安装Android Studio插件`，用起来不爽)
 ```bash
 	cd <project path> 或项目root目录
 	python cast.py
