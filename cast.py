@@ -21,6 +21,7 @@ init()
 from colorama import Fore, Back, Style
 
 MAX_ANDROID_API = 20
+ANDROID_ANNOTATION_SUPPORT = "20.0.0"
 
 # http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
 def is_exe(fpath):
@@ -401,18 +402,14 @@ def libdir(dir):
         return None
 
 
+# project是否可以编译成为apk(通过plugin来判断)
 def is_launchable_project(dir):
-    if is_gradle_project(dir):
-        data = open_as_text(os.path.join(dir, 'build.gradle'))
-        data = remove_comments(data)
-        if re.findall(r'''apply\s+plugin:\s*['"]com.android.application['"]''', data, re.MULTILINE):
-            return True
-    elif os.path.isfile(os.path.join(dir, 'project.properties')):
-        data = open_as_text(os.path.join(dir, 'project.properties'))
-        if re.findall(r'''^\s*target\s*=.*$''', data, re.MULTILINE) and not re.findall(
-                r'''^\s*android.library\s*=\s*true\s*$''', data, re.MULTILINE):
-            return True
-    return False
+    data = open_as_text(os.path.join(dir, 'build.gradle'))
+    data = remove_comments(data)
+    if re.findall(r'''apply\s+plugin:\s*['"]com.android.application['"]''', data, re.MULTILINE):
+        return True
+    else:
+        return False
 
 
 # 直接按照目录结构来寻找: project dir
@@ -456,6 +453,7 @@ def list_aar_projects(dir, deps):
     # 如何获取 aar 呢?
     incr_dir = os.path.join(dir, 'build', 'intermediates', 'incremental')
 
+    # 注意路径的选择
     files = glob.glob(os.path.join(incr_dir, "mergeResources*/*/merger.xml"))
 
     for file in files:
@@ -500,21 +498,33 @@ def get_android_jar(path):
                     api = a
                     result = os.path.join(pd, 'android.jar')
 
-                    # 停止选择
+                    # 停止选择(设置 android sdk的版本)
                     if api == MAX_ANDROID_API:
                         break
     return result
 
+def get_support_annotation_jar(sdk_path):
+    path = os.path.join(sdk_path, "extras/android/m2repository/com/android/support/support-annotations")
+
+    path = os.path.join(path, ANDROID_ANNOTATION_SUPPORT, "support-annotations-%s.jar" % ANDROID_ANNOTATION_SUPPORT)
+    if os.path.exists(path):
+        return path
+    else:
+        return None
+
+
+
+
 
 def get_adb(path):
-    execname = os.name == 'nt' and 'adb.exe' or 'adb'
+    execname = 'adb'
     if os.path.isdir(path) and is_exe(os.path.join(path, 'platform-tools', execname)):
         return os.path.join(path, 'platform-tools', execname)
 
 
 def get_aapt(path):
     # 首先获取: execname
-    execname = os.name == 'nt' and 'aapt.exe' or 'aapt'
+    execname = 'aapt'
     # 给定sdk path
     if os.path.isdir(path) and os.path.isdir(os.path.join(path, 'build-tools')):
         btpath = os.path.join(path, 'build-tools')
@@ -532,7 +542,7 @@ def get_aapt(path):
 
 def get_dx(path):
     # dx的作用
-    execname = os.name == 'nt' and 'dx.bat' or 'dx'
+    execname = 'dx'
     if os.path.isdir(path) and os.path.isdir(os.path.join(path, 'build-tools')):
         btpath = os.path.join(path, 'build-tools')
         minv = LooseVersion('0')
@@ -641,6 +651,8 @@ def search_path(dir, filename):
 def get_maven_libs(projs):
     maven_deps = []
     for proj in projs:
+        print("---> Current Project: %s" % proj)
+
         str = open_as_text(os.path.join(proj, 'build.gradle'))
         str = remove_comments(str)
 
@@ -650,9 +662,15 @@ def get_maven_libs(projs):
 
             # compile的格式:
             # compile 'com.facebook.fresco:fresco:0.6.0+'
+            # compile 'me.chunyu.android g7json 0.1.1@jar'
             for mvndep in re.findall(r'''compile\s+['"](.+:.+:.+)(?:@*)?['"]''', depends):
+                if mvndep.endswith("@jar"):
+                    mvndep = mvndep[:-4]
+                    # compile 'me.chunyu.android g7json 0.1.1@jar' -- compile 'me.chunyu.android g7json 0.1.1'
                 mvndeps = mvndep.split(':')
+
                 if not mvndeps in maven_deps:
+                    print("---> Deps: %s" % (" ".join(mvndeps)))
                     maven_deps.append(mvndeps)
     return maven_deps
 
@@ -667,6 +685,11 @@ def get_maven_jars(libs):
     # 1. ~/.gralde/caches
     gradle_home = os.path.join(os.path.expanduser('~'), '.gradle', 'caches')
 
+    # extras/android/m2repository
+    # com.android.support appcompat-v7 20.0.0
+    # me.chunyu.android g7anno-lib 0.4.1.4@aar
+    # me.chunyu.android countly 15.6.2
+    # me.chunyu.android cyauth 0.2.2
     for dirpath, dirnames, files in os.walk(gradle_home):
         # search in ~/.gradle/**/GROUP_ID/ARTIFACT_ID/VERSION/**/*.jar
         # libs的格式?
@@ -691,11 +714,11 @@ def get_maven_jars(libs):
                                 maxdir = subd
                         if maxdir:
                             maven_path_prefix.append(os.path.join(dir1, maxdir))
+
         for dirprefix in maven_path_prefix:
             if dirpath.startswith(dirprefix):
                 for fn in files:
-                    if fn.endswith('.jar') and not fn.startswith('.') and not fn.endswith(
-                            '-sources.jar') and not fn.endswith('-javadoc.jar'):
+                    if fn.endswith('.jar') and not fn.startswith('.') and not fn.endswith('-sources.jar') and not fn.endswith('-javadoc.jar'):
                         jars.append(os.path.join(dirpath, fn))
                 break
     return jars
@@ -864,6 +887,8 @@ if __name__ == "__main__":
         print('android.jar not found !!!\nUse local.properties or set ANDROID_HOME env')
         exit(7)
 
+    support_annotation_jar = get_support_annotation_jar(sdkdir)
+
     # 4. 获取工程内的所有依赖的项目的路径
     deps = deps_list(dir)
 
@@ -1018,6 +1043,7 @@ if __name__ == "__main__":
         with open(os.path.join(bindir, 'res.zip'), 'rb') as fp:
             curl(URL_PUSH_RES, body=fp.read(), exitcode=11)
 
+    srcModified = True
     if srcModified:
         vmversion = curl(URL_VM_VERSION, ignoreError=True)
         if vmversion == None:
@@ -1033,7 +1059,7 @@ if __name__ == "__main__":
             print(Fore.RED + "更新 classes.dex 文件..." + Fore.RESET)
             launcher = curl(URL_LAUNCH, exitcode=13)
 
-            # 获取所有的 jar 文件
+            # 获取所有的 jar 文件(添加到classpath中)
             classpath = [android_jar]
             for dep in adeps:
                 dlib = libdir(dep)
@@ -1044,6 +1070,10 @@ if __name__ == "__main__":
 
             # jars from maven cache
             maven_libs = get_maven_libs(adeps)
+            print("Mvn Libs:")
+            for l in maven_libs:
+                print (" ".join(l))
+
             maven_libs_cache_file = os.path.join(bindir, 'cache-javac-maven.json')
             maven_libs_cache = {}
             if os.path.isfile(maven_libs_cache_file):
@@ -1052,11 +1082,12 @@ if __name__ == "__main__":
                         maven_libs_cache = json.load(fp)
                 except:
                     pass
-            if maven_libs_cache.get('version') != 1 or not maven_libs_cache.get(
-                    'from') or sorted(maven_libs_cache['from']) != sorted(maven_libs):
+
+            if maven_libs_cache.get('version') != 1 or not maven_libs_cache.get('from') or sorted(maven_libs_cache['from']) != sorted(maven_libs):
                 if os.path.isfile(maven_libs_cache_file):
                     os.remove(maven_libs_cache_file)
                 maven_libs_cache = {}
+
             maven_jars = []
             if maven_libs_cache:
                 maven_jars = maven_libs_cache.get('jars')
@@ -1070,6 +1101,14 @@ if __name__ == "__main__":
                     pass
             if maven_jars:
                 classpath.extend(maven_jars)
+
+            # 添加注解
+            if support_annotation_jar:
+                classpath.append(support_annotation_jar)
+
+            print("Mvn maven_jars:")
+            print ("\n".join(maven_jars))
+
             # aars from exploded-aar
             darr = os.path.join(dir, 'build', 'intermediates', 'exploded-aar')
             # TODO: use the max version
@@ -1080,9 +1119,7 @@ if __name__ == "__main__":
                     if fn.endswith('.jar'):
                         classpath.append(os.path.join(dirpath, fn))
             # R.class
-            classesdir = search_path(os.path.join(dir, 'build', 'intermediates', 'classes'),
-                                     launcher and launcher.replace('.',
-                                                                   os.path.sep) + '.class' or '$')
+            classesdir = search_path(os.path.join(dir, 'build', 'intermediates', 'classes'), launcher and launcher.replace('.', os.path.sep) + '.class' or '$')
             classpath.append(classesdir)
 
             binclassesdir = os.path.join(bindir, 'classes')
