@@ -41,7 +41,7 @@ public class LcastServer extends EmbedHttpServer {
     public static Application app;
     final Context context;
 
-    File latestPushFile; // 最新的资源文件
+    File latestPushResFile; // 最新的资源文件
 
     private LcastServer(Context ctx, int port) {
         super(port);
@@ -60,7 +60,7 @@ public class LcastServer extends EmbedHttpServer {
             return;
         }
 
-        // 2. 获取App State: 2 表示正常前台运行
+        // 2. 获取App State: 2 表示正常前台运行, 只有处于前台运行的程序才能修改代码和资源
         if (path.equalsIgnoreCase("/appstate")) {
             response.setContentTypeText();
             response.write(String.valueOf(OverrideContext.getApplicationState()).getBytes("utf-8"));
@@ -110,6 +110,8 @@ public class LcastServer extends EmbedHttpServer {
             //      res.ped
             //      xxxx.apk
             File dex = new File(dir, "dex.ped");
+
+            // 如果存在: dex.ped, 那么采用: res.ped, 否则采用: apk(什么逻辑呢?)
             File file;
             if (dex.length() > 0) {
                 file = new File(dir, "res.ped");
@@ -127,7 +129,7 @@ public class LcastServer extends EmbedHttpServer {
                 fos.write(buf, 0, l);
             }
             fos.close();
-            latestPushFile = file;
+            latestPushResFile = file;
             response.setStatusCode(201);
             Log.d("lcast", "lcast resources file received (" + file.length() + " bytes): " + file);
             return;
@@ -156,19 +158,30 @@ public class LcastServer extends EmbedHttpServer {
 
         // 如何重启呢?
         if ("/pcast".equalsIgnoreCase(path)) {
+            // 告知用户要重启(注意参数: false)
+            // 用户可以选择关闭
             LayoutCast.restart(false);
             response.setStatusCode(200);
             return;
         }
 
+        /**
+         * dex.ped  res.ped 之间的关系
+         * 1. 启动前, 如果dex.ped存在，变成: dex.apk, 然后通过class loader加载；res.apk等文件要被删除
+         * 2. 如果res.ped存在，则变成: res.apk 进行加载
+         * 3. 上传资源时如果: dex.ped存在，则以 res.ped保存；说明接下来马上就要重启，dex.ped加载之后，再加载: res.ped
+         * 4. 如果dex.ped不存在，则直接保存为 res.apk
+         */
         if ("/lcast".equalsIgnoreCase(path)) {
             File dir = new File(context.getCacheDir(), "lcast");
             File dex = new File(dir, "dex.ped");
 
+            // 1. 如果存在: dex 文件, 则将: latestPushResFile 修改为: res.ped; 然后重启
             if (dex.length() > 0) {
-                if (latestPushFile != null) {
+                // 代码修改了，临时修改: latestPushResFile, 然后重启代码， 防止: res.ped被删除
+                if (latestPushResFile != null) {
                     File f = new File(dir, "res.ped");
-                    latestPushFile.renameTo(f);
+                    latestPushResFile.renameTo(f);
                 }
                 Log.i("lcast", "cast with dex changes, need to restart the process (activity stack will be reserved)");
                 boolean b = LayoutCast.restart(true);
@@ -176,25 +189,32 @@ public class LcastServer extends EmbedHttpServer {
             } else {
 
                 // 没有代码的修改
-                Resources res = ResUtils.getResources(app, latestPushFile);
+                Resources res = ResUtils.getResources(app, latestPushResFile);
                 OverrideContext.setGlobalResources(res);
 
                 response.setStatusCode(200);
-                response.write(String.valueOf(latestPushFile).getBytes("utf-8"));
+                response.write(String.valueOf(latestPushResFile).getBytes("utf-8"));
                 Log.i("lcast", "cast with only res changes, just recreate the running activity.");
             }
             return;
         }
+
+        // 资源恢复默认的资源
         if ("/reset".equalsIgnoreCase(path)) {
             OverrideContext.setGlobalResources(null);
             response.setStatusCode(200);
             response.write("OK".getBytes("utf-8"));
             return;
         }
+
+        // 读取: 最终apk的资源
+        //      例如: me.chunyu.ChunyuYuer.R (由于Android的Resource Union, 它基本上包含多有的id信息)
         if ("/ids.xml".equalsIgnoreCase(path)) {
             String Rn = app.getPackageName() + ".R";
+
             Class<?> Rclazz = app.getClassLoader().loadClass(Rn);
             String str = new IdProfileBuilder(context.getResources()).buildIds(Rclazz);
+
             response.setStatusCode(200);
             response.setContentTypeText();
             response.write(str.getBytes("utf-8"));
@@ -214,6 +234,8 @@ public class LcastServer extends EmbedHttpServer {
         if ("/apkinfo".equalsIgnoreCase(path)) {
             ApplicationInfo ai = app.getApplicationInfo();
             File apkFile = new File(ai.sourceDir);
+            // 获取Apk的信息:
+            //      size, lastModified, md5
             JSONObject result = new JSONObject();
             result.put("size", apkFile.length());
             result.put("lastModified", apkFile.lastModified());
@@ -237,6 +259,8 @@ public class LcastServer extends EmbedHttpServer {
         // 获取原始的apk数据
         if ("/apkraw".equalsIgnoreCase(path)) {
             ApplicationInfo ai = app.getApplicationInfo();
+
+            // 将apk直接下载下来
             FileInputStream fis = new FileInputStream(ai.sourceDir);
             response.setStatusCode(200);
             response.setContentTypeBinary();
@@ -253,6 +277,7 @@ public class LcastServer extends EmbedHttpServer {
             File apkFile = new File(ai.sourceDir);
 
             JarFile jarFile = new JarFile(apkFile);
+            // 获取其中的fileinfo
             JarEntry je = jarFile.getJarEntry(path.substring("/fileinfo/".length()));
             InputStream ins = jarFile.getInputStream(je);
             MessageDigest md5 = MessageDigest.getInstance("MD5");
@@ -320,7 +345,7 @@ public class LcastServer extends EmbedHttpServer {
         }
     }
 
-    // 删除: lcast内的所有的文件
+    // 删除: lcast内的所有的apk文件
     public static void cleanCache(Context ctx) {
         File dir = new File(ctx.getCacheDir(), "lcast");
         File[] fs = dir.listFiles();

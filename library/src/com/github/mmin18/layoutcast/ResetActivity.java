@@ -30,6 +30,7 @@ public class ResetActivity extends Activity {
 		setContentView(tv);
 		createTime = SystemClock.uptimeMillis();
 
+		// 直接关闭， 不用考虑启动的问题，直接手动启动也可以，无碍大局
 		ready = getIntent().getBooleanExtra("reset", false);
 		if (ready) {
 			reset();
@@ -63,6 +64,7 @@ public class ResetActivity extends Activity {
 
 	@Override
 	public void onBackPressed() {
+		// 如果多次返回就直接关闭
 		if (back++ > 0) {
 			if (ready) {
 				reset.run();

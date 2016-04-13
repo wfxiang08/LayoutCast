@@ -20,10 +20,12 @@ public class IdProfileBuilder {
 		sb.append("<resources>\n");
 		Class<?> clazz = null;
 		try {
+			// 注意资源文件的定义:  me.chunyu.ChunyuYuer.R$id
 			String n = Rclazz.getName() + "$id";
 			clazz = cl.loadClass(n);
 		} catch (ClassNotFoundException e) {
 		}
+
 		if (clazz != null) {
 			buildIds(sb, clazz);
 		}
@@ -36,6 +38,8 @@ public class IdProfileBuilder {
 		// 统计Ids的最大最小数值
 		int start = 0, end = 0;
 		for (Field f : clazz.getDeclaredFields()) {
+			// 如何导出资源文件呢?
+			// Integer类型的数据，静态的，可访问的
 			if (Integer.TYPE.equals(f.getType()) && java.lang.reflect.Modifier.isStatic(f.getModifiers()) && java.lang.reflect.Modifier.isPublic(f.getModifiers())) {
 				int i = f.getInt(null);
 				if ((i & 0x7f000000) == 0x7f000000) {
@@ -70,6 +74,8 @@ public class IdProfileBuilder {
 		StringBuilder sb = new StringBuilder();
 		sb.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
 		sb.append("<resources>\n");
+
+		// 处理各类资源
 		for (String type : types) {
 			Class<?> clazz = null;
 			try {
@@ -105,6 +111,7 @@ public class IdProfileBuilder {
 			}
 		}
 
+		// 每一类资源都有: type， name, id
 		for (int i = start; i > 0 && i <= end; i++) {
 			out.append("  <public type=\"");
 			out.append(res.getResourceTypeName(i));

@@ -63,6 +63,7 @@ public class LayoutCast {
 		// 修改系统的InlaterService
 		BootInflater.initApplication(app);
 
+		// 启动完毕了，则修改: res.ped --> res.apk(下次重启就不要了)
 		if (res.length() > 0) {
 			try {
 				File f = new File(dir, "res.apk");
@@ -82,6 +83,8 @@ public class LayoutCast {
 
 	public static boolean restart(boolean confirm) {
 		Context top = OverrideContext.getTopActivity();
+
+		// 如何重启?
 		if (top instanceof ResetActivity) {
 			((ResetActivity) top).reset();
 			return true;
