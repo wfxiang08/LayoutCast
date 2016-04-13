@@ -1,4 +1,102 @@
-*Android SDK sucks. It's so slow to build and run which waste me a lot of time every day.*
+# LayoutCast
+是什么东西，工作原理见最后面！
+
+## 1. 特色
+* Fast cast code and resource changes, usually less than 5 sec.
+	* `快速处理代码和Resource的变化，5s内生效`
+* Cast does not reset your application. The running activity stack will be kept.
+	* `保留当前的Activity Stack`, 一般情况下只更新当前的Activity
+* Easy to setup, only add few lines of code.
+	* `容易使用`
+* Support both eclipse and AndroidStudio project.
+	* `其实基本和IDE无关`，只是用到了IDE的某个目录结构的特点
+* Provide a AndroidStudio plugin to click and cast.
+	* 要求 `adb devices` 只有一个设备, 否则plugin就傻了，不过也不影响开发
+
+
+## 2. 如何和Android Studio集成呢?
+
+* 安装插件(安装一次就OK)
+	1. Download Android Studio / Intellij plugin <https://github.com/mmin18/LayoutCast/raw/master/ide/IDEAPlugin/IDEAPlugin.jar>
+	2. In Android Studio, go to `Preferences` > `Plugins` > `Install plugin from disk...`
+	3. Choose the downloaded file from step #1 to install the plugin.
+		* After restart, you should find a button at right of the run section: 
+		* ![TOOLBAR](images/sc_toolbar.png)
+
+* Android Project & Build System Changes
+	* 添加依赖
+```gradle
+	dependencies {
+		compile 'com.github.mmin18.layoutcast:library:1.+@aar'
+		...
+	}
+```
+
+	* 修改Application的代码
+```java
+public class MyApplication extends Application {
+    @Override
+    public void onCreate() {
+        super.onCreate();
+
+		// 只在测试时有效
+        if (BuildConfig.DEBUG) {
+            LayoutCast.init(this);
+        }
+    }
+}
+```
+	* 修改AndroidManifest.xml
+```xml
+    <application
+        android:name=".MyApplication"
+		...
+
+	<activity android:name="com.github.mmin18.layoutcast.ResetActivity" />
+    <uses-permission android:name="android.permission.INTERNET" />
+```
+
+* 运行
+	* 正常运行Android项目
+	* 修改资源或者Java代码, 然后: `./cast.py` 或点击: Android Studio`工具栏上的按钮`
+```bash
+	cd <project path> 或项目root目录
+	python cast.py
+    python cast.py --device=xxxx
+
+	Or you can specify the path in args:
+	python cast.py <project path>
+```
+
+
+
+
+## Troubleshootings(一定要看)
+* `这只是一个工具，保证能用，但是不保证任何场合都能用`（理论上OK, 但是没有经过完整测试）
+* 目录结构的约定:
+	* It can only find `/src` folder under `<project>/src` or `<project>/src/main/java`
+	* It can only find `/res` folder under `<project>/res` or `<project>/src/main/res`
+* 可以添加和修改资源，但是不能删除
+	* You can add or replace resources, but you can't delete or rename resources (for now)
+	* 删除之后重新使用gradle`编译运行即可`, 也就是放弃gradle的状态
+* 异常如何处理:
+	* If cast failed, clean your project, remove `/bin` and `/build` and rebuild again may solve the problem
+
+-----
+
+## How it Works
+
+When **LayoutCast.init(context);** called, the application will start tiny http server in the background, and receive certain commands. Later on, the cast script running on your computer will communicate with your running app which is running through ADB TCP forward.
+
+When the cast script runs, it will scan all possible ports on your phone to find the running LayoutCast server, and get the running application's resource list with its id, then compiled to `public.xml`. In which, it will be used later to keep resource id index consistent with the running application.
+
+The cast script scans your project folder to find the `/res` folder, and all dependencies inside `/res` folder. You can run the **aapt** command to package all resources into **res.zip**, and then upload the zip file to the LayoutCast server to replace the resources of the running process. Then, it calls the **Activity.recreate()** to restart the visible activity.
+
+Usually the activity will keep its running state in **onSaveInstanceState()** and restore after coming back later.
+
+
+
+`Android SDK sucks. It's so slow to build and run which waste me a lot of time every day.`
 
 ## Motivation
 
@@ -17,13 +115,6 @@ Youtube demo video: <https://youtu.be/rc04LK2_suU>
 
 优酷: <http://v.youku.com/v_show/id_XMTMwNTUzOTQ3Mg>
 
-## Features
-
-- Fast cast code and resource changes, usually less than 5 sec.
-- Cast does not reset your application. The running activity stack will be kept.
-- Easy to setup, only add few lines of code.
-- Support both eclipse and AndroidStudio project.
-- Provide a AndroidStudio plugin to click and cast.
 
 ## Limitations
 
@@ -40,104 +131,4 @@ The test machine is a 2015 MBP with a 2014 MotoX.
 
 The test project's apk is about 14.3MB, which contains 380k lines of java code and 86k lines of xml files.
 
-## Getting Started for Android Studio / Intellij
 
-### 1. Install Plugin
-
-*If you have already done that, you can skip this step.*
-
-1. Download Android Studio / Intellij plugin <https://github.com/mmin18/LayoutCast/raw/master/ide/IDEAPlugin/IDEAPlugin.jar>
-2. In Android Studio, go to `Preferences` > `Plugins` > `Install plugin from disk...`
-3. Choose the downloaded file from step #1 to install the plugin.
-
-After restart, you should find a button at right of the run section: ![TOOLBAR](images/sc_toolbar.png)
-
-### 2. Android Project & Build System Changes
-
-**First,** you need to setup your project. Add below dependency in your build.gradle:
-
-	dependencies {
-		compile 'com.github.mmin18.layoutcast:library:1.+@aar'
-		...
-	}
-
-**Second,** add the following code in your main application class inside `onCreate()` method. And since LayoutCast only necessary when you develop, you should always check if `BuildConfig.DEBUG == true`.
-
-	public class MyApplication extends Application {
-		@Override
-		public void onCreate() {
-			super.onCreate();
-
-			if (BuildConfig.DEBUG) {
-				LayoutCast.init(this);
-			}
-		}
-	}
-
-**Thrid,** don't forget to check if your Application class is registered in `AndroidManifest.xml`:
-
-    <application
-        android:name=".MyApplication"
-		...
-
-**Fourth,** add special activity class (from LayoutCast library) called `ResetActivity` in your manifest, this activity will be used to restart and restore our application activity stack.
-
-	<activity android:name="com.github.mmin18.layoutcast.ResetActivity" />
-
-And make sure you have the network permission in your `AndroidManifest.xml`:
-
-    <uses-permission android:name="android.permission.INTERNET" />
-
-### 3. Run and cast
-
-Run the application (in device or emulator), then try to make some changes for resources file or java file.
-
-After that, click the LayoutCast button in toolbar (on the right of Run button) / go to menu `Tools`> `Layout Cast`.
-
-It will show the result above status bar:
-
-![SUCCESS](images/sc_success.png)
-
-![FAIL](images/sc_fail.png)
-
-## Getting started for Eclipse
-
-### 1. Prepare the cast script
-
-I haven't written the Eclipse plugin yet, so if you need to use it on a eclipse project, you can try to use the command line.
-
-You can get the script here <https://raw.githubusercontent.com/mmin18/LayoutCast/master/cast.py>. Put the script in project root dir or anywhere you like. Since it is written in Python 2.7 (make sure you have installed the right version). 
-
-### 2. Android Project & Build System Changes
-
-To get it work, we will need to download the LayoutCast library <https://github.com/mmin18/LayoutCast/raw/master/libs/lcast.jar> and put it to your `/libs` folder.
-
-The project structure will remain the same.
-
-### 3. Run and Cast
-
-Run the application first, and open terminal and execute **python cast.py** under your project's folder:
-
-	cd <project path>
-	python cast.py
-
-Or you can specify the path in args:
-
-	python cast.py <project path>
-
-## How it Works
-
-When **LayoutCast.init(context);** called, the application will start tiny http server in the background, and receive certain commands. Later on, the cast script running on your computer will communicate with your running app which is running through ADB TCP forward.
-
-When the cast script runs, it will scan all possible ports on your phone to find the running LayoutCast server, and get the running application's resource list with its id, then compiled to `public.xml`. In which, it will be used later to keep resource id index consistent with the running application.
-
-The cast script scans your project folder to find the `/res` folder, and all dependencies inside `/res` folder. You can run the **aapt** command to package all resources into **res.zip**, and then upload the zip file to the LayoutCast server to replace the resources of the running process. Then, it calls the **Activity.recreate()** to restart the visible activity.
-
-Usually the activity will keep its running state in **onSaveInstanceState()** and restore after coming back later.
-
-## Troubleshootings
-
-- It can only find `/src` folder under `<project>/src` or `<project>/src/main/java`
-- It can only find `/res` folder under `<project>/res` or `<project>/src/main/res`
-- You can add or replace resources, but you can't delete or rename resources (for now)
-- If cast failed, clean your project, remove `/bin` and `/build` and rebuild again may solve the problem
