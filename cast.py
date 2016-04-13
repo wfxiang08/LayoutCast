@@ -1043,7 +1043,7 @@ if __name__ == "__main__":
         with open(os.path.join(bindir, 'res.zip'), 'rb') as fp:
             curl(URL_PUSH_RES, body=fp.read(), exitcode=11)
 
-    srcModified = True
+    # srcModified = True
     if srcModified:
         vmversion = curl(URL_VM_VERSION, ignoreError=True)
         if vmversion == None:
