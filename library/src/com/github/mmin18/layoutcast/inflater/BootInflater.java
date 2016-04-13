@@ -8,6 +8,7 @@ import android.app.Application;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.util.Log;
+import android.view.ContextThemeWrapper;
 import android.view.LayoutInflater;
 
 import com.github.mmin18.layoutcast.context.OverrideContext;
@@ -31,24 +32,27 @@ public class BootInflater extends BaseInflater {
 
 	@Override
 	public LayoutInflater cloneInContext(Context newContext) {
-		if (newContext instanceof ContextWrapper) {
+		if (newContext instanceof ContextThemeWrapper) {
+			// 修改: 默认的 LayoutInflater
+			//      也就是在调用的时候设置: Resource等
 			try {
-				OverrideContext.overrideDefault((ContextWrapper) newContext);
+				OverrideContext.overrideDefault((ContextThemeWrapper) newContext);
 			} catch (Exception e) {
-				Log.e("lcast", "fail to override resource in context "
-						+ newContext, e);
+				Log.e("lcast", "fail to override resource in context " + newContext, e);
 			}
 		}
 		return super.cloneInContext(newContext);
 	}
 
 	public static void initApplication(Application app) {
-		LayoutInflater inflater = (LayoutInflater) app
-				.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+		// 1. 修改系统的: InflaterService
+		LayoutInflater inflater = (LayoutInflater) app.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
 		if (inflater instanceof BootInflater) {
 			// already inited
 			return;
 		}
+
+		// 2.
 		systemInflater = inflater;
 		Class<?> cCtxImpl = app.getBaseContext().getClass();
 		if ("android.app.ContextImpl".equals(cCtxImpl.getName())) {
@@ -62,12 +66,14 @@ public class BootInflater extends BaseInflater {
 			}
 
 			try {
-				Class<?> cStaticFetcher = cl.loadClass(
-						androidM ? "android.app.SystemServiceRegistry$StaticServiceFetcher" :
-						"android.app.ContextImpl$StaticServiceFetcher");
+				String fetcherStr = androidM ? "android.app.SystemServiceRegistry$StaticServiceFetcher" : "android.app.ContextImpl$StaticServiceFetcher";
+				String fetcherImpl = (androidM ? "android.app.SystemServiceRegistry$" : "android.app.ContextImpl$");
+				Class<?> cStaticFetcher = cl.loadClass(fetcherStr);
 				Class<?> cFetcherContainer = null;
+
+				// 寻找一个: fetcherImpl
 				for (int i = 1; i < 50; i++) {
-					String cn = (androidM ? "android.app.SystemServiceRegistry$" : "android.app.ContextImpl$") + i;
+					String cn = fetcherImpl + i;
 					try {
 						Class<?> c = cl.loadClass(cn);
 						if (cStaticFetcher.isAssignableFrom(c)) {
@@ -77,8 +83,7 @@ public class BootInflater extends BaseInflater {
 					} catch (Exception e) {
 					}
 				}
-				Constructor<?> cFetcherConstructor = cFetcherContainer
-						.getDeclaredConstructor();
+				Constructor<?> cFetcherConstructor = cFetcherContainer.getDeclaredConstructor();
 				cFetcherConstructor.setAccessible(true);
 				Object fetcher = cFetcherConstructor.newInstance();
 				Field f = cStaticFetcher.getDeclaredField("mCachedInstance");
@@ -86,21 +91,19 @@ public class BootInflater extends BaseInflater {
 				f.set(fetcher, new BootInflater(app));
 				f = cSer.getDeclaredField(androidM ? "SYSTEM_SERVICE_FETCHERS" : "SYSTEM_SERVICE_MAP");
 				f.setAccessible(true);
-				HashMap<String, Object> map = (HashMap<String, Object>) f
-						.get(null);
+
+				// 通过反射来修改系统的: InflatorService
+				HashMap<String, Object> map = (HashMap<String, Object>) f.get(null);
 				map.put(Context.LAYOUT_INFLATER_SERVICE, fetcher);
 			} catch (Exception e) {
-				throw new RuntimeException(
-						"unable to initialize application for BootInflater");
+				throw new RuntimeException("unable to initialize application for BootInflater");
 			}
 		} else {
-			throw new RuntimeException("application base context class "
-					+ cCtxImpl.getName() + " is not expected");
+			throw new RuntimeException("application base context class "  + cCtxImpl.getName() + " is not expected");
 		}
 
 		if (!(app.getSystemService(Context.LAYOUT_INFLATER_SERVICE) instanceof BootInflater)) {
-			throw new RuntimeException(
-					"unable to initialize application for BootInflater");
+			throw new RuntimeException("unable to initialize application for BootInflater");
 		}
 	}
 }

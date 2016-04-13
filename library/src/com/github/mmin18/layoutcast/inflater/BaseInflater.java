@@ -20,8 +20,13 @@ public class BaseInflater extends LayoutInflater {
 	@Override
 	protected View onCreateView(String name, AttributeSet attrs)
 			throws ClassNotFoundException {
+
+		// 如何创建View
+		// 例如给定: <LayoutXXXView></LayoutXXXView>
+		// 这里的prefix作用?
 		for (String prefix : sClassPrefixList) {
 			try {
+				// 控制: prefix?
 				View view = createView(name, prefix, attrs);
 				if (view != null) {
 					return view;
@@ -35,6 +40,7 @@ public class BaseInflater extends LayoutInflater {
 		return super.onCreateView(name, attrs);
 	}
 
+	@Override
 	public LayoutInflater cloneInContext(Context newContext) {
 		return new BaseInflater(this, newContext);
 	}

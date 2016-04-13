@@ -19,30 +19,39 @@ import java.io.File;
 
 public class LayoutCast {
 
-	private static boolean inited;
+	private static boolean inited; // 是否已经初始化
 	private static Context appContext;
 
 	public static void init(Context context) {
 		if (inited)
 			return;
 
-		Application app = context instanceof Application ? (Application) context
-				: (Application) context.getApplicationContext();
+		// 1. 如何获取Application呢?
+		// Application本身就是一个Context
+		// 一般的Context也和ApplicationContext有关联
+		Application app = context instanceof Application ? (Application) context : (Application) context.getApplicationContext();
 		appContext = app;
 
+		// 2. 全新的启动，删除cache
+		//    删除全部的: cache_dir/lcast 目录下的apk文件
 		LcastServer.cleanCache(app);
+
 		File dir = new File(app.getCacheDir(), "lcast");
 		File dex = new File(dir, "dex.ped");
 		File res = new File(dir, "res.ped");
 
+		// 1. 如果存在有效的: lcast/dex.ped 文件， 则修改为: lcast/dex.apk
 		if (dex.length() > 0) {
 			File f = new File(dir, "dex.apk");
 			dex.renameTo(f);
+
+			// lcast/opt/
 			File opt = new File(dir, "opt");
 			opt.mkdirs();
 			final String vmVersion = System.getProperty("java.vm.version");
 			if (vmVersion != null && vmVersion.startsWith("2")) {
 				// 直接将新的dex文件放在class loader的dex列表之前
+				// 必须支持ART(Android 5.0以上吧)
 				ArtUtils.overrideClassLoader(app.getClassLoader(), f, opt);
 			} else {
 				Log.e("lcast", "cannot cast dex to daivik, only support ART now.");
@@ -50,6 +59,8 @@ public class LayoutCast {
 		}
 
 		OverrideContext.initApplication(app);
+
+		// 修改系统的InlaterService
 		BootInflater.initApplication(app);
 
 		if (res.length() > 0) {

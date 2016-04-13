@@ -331,7 +331,8 @@ public class LcastServer extends EmbedHttpServer {
         }
     }
 
-    // 递归删除文件
+    // 递归删除文件其中的apk文件
+    //
     private static void rm(File f) {
         if (f.isDirectory()) {
             for (File ff : f.listFiles()) {

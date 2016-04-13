@@ -25,6 +25,8 @@ public class ArtUtils {
 
             Object pathList = fPathList.get(cl);
 
+            // XXX: ClassLoader: cl.pathList
+
 
             // ClassLoader --> Field pathList --> pathList
 
@@ -36,10 +38,13 @@ public class ArtUtils {
 
             Object dexElements = fDexElements.get(pathList);
 
+            // XXX: ClassLoader: cl.pathList.dexElements
+
             // 加载: dex
             DexClassLoader cl2 = new DexClassLoader(dex.getAbsolutePath(), opt.getAbsolutePath(), null, bootstrap);
             Object pathList2 = fPathList.get(cl2);
             Object dexElements2 = fDexElements.get(pathList2);  // 读取: dexElements
+            // 读取: DexClassLoader的: cl2.pathList.dexElements
 
             // 读取新的: dexElements
             Object element2 = Array.get(dexElements2, 0);
@@ -54,6 +59,9 @@ public class ArtUtils {
                 Object element = Array.get(dexElements, i);
                 Array.set(newDexElements, i + 1, element);
             }
+            // dexElements = [dexElements2[0], dexElements...]
+
+            // 修改系统的: dexElements
             fDexElements.set(pathList, newDexElements);
             return true;
         } catch (Exception e) {
